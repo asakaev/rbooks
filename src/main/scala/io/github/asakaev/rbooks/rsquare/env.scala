@@ -1,32 +1,42 @@
 package io.github.asakaev.rbooks.rsquare
 
-import io.github.asakaev.zjs._
+import io.github.asakaev.zjs.dom._
+import io.github.asakaev.zjs.graphics._
 import org.scalajs.dom.document
 import org.scalajs.dom.raw._
+import org.scalajs.dom.svg.SVG
+import scalatags.JsDom.TypedTag
+import zio.clock.Clock
+import zio.duration.Duration
 import zio.stream._
 import zio.{Task, ZIO}
 
+import scala.concurrent.duration._
+
 object env {
-  val audioContext: Task[AudioContext] =
-    ZIO.effect(new AudioContext())
 
   val audioElement: Option[HTMLAudioElement] = Option(
     document.querySelector("audio").asInstanceOf[HTMLAudioElement]
   )
 
-  val buttonElement: Option[HTMLButtonElement] = Option(
-    document.querySelector("button").asInstanceOf[HTMLButtonElement]
-  )
+  val applicationElement: Option[HTMLDivElement] =
+    Option(document.getElementById("app").asInstanceOf[HTMLDivElement])
 
-  val buttonStream: Stream[Nothing, MouseEvent] =
-    buttonElement.map(buttonClickStream).getOrElse(Stream.empty)
+  def mountApplication(element: HTMLDivElement, svg: TypedTag[SVG]): Task[Node] =
+    ZIO.effect(element.appendChild(svg.render))
 
-  val pointPrinter: ZStream[Any, Nothing, Unit] =
-    buttonStream.mapM { e =>
-      ZIO.effectTotal(println(s"x:${e.screenX}, y:${e.screenY}"))
-    }
+  val framesValues: ZStream[Any with Clock, Nothing, Unit] =
+    frames
+      .throttleShape(1, Duration.fromScala(1.second))(_ => 1)
+      .mapM(v => ZIO.effectTotal(println(v)))
 
-  val listenButton: ZIO[Any, Nothing, Unit] = pointPrinter.run(Sink.drain)
+  def streams(node: Node): ZIO[Any with Clock, Nothing, Unit] =
+    clicks(node)
+      .mapM { e =>
+        ZIO.effectTotal(println(s"x:${e.screenX}, y:${e.screenY}"))
+      }
+      .merge(framesValues)
+      .run(Sink.drain)
 
   val audiElementSrc: String =
     audioElement.fold("No audio element")(_.src)
