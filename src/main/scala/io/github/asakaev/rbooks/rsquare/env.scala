@@ -1,23 +1,24 @@
 package io.github.asakaev.rbooks.rsquare
 
-import io.github.asakaev.zjs.dom._
-import io.github.asakaev.zjs.graphics._
+import eu.timepit.refined._
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.auto._
+import eu.timepit.refined.numeric.GreaterEqual
 import org.scalajs.dom.document
 import org.scalajs.dom.raw._
 import org.scalajs.dom.svg.SVG
 import scalatags.JsDom.TypedTag
-import zio.clock.Clock
-import zio.duration.Duration
-import zio.stream._
 import zio.{Task, ZIO}
 
-import scala.concurrent.duration._
+import scala.scalajs.js.typedarray.Uint8Array
 
 object env {
 
-  val audioElement: Option[HTMLAudioElement] = Option(
-    document.querySelector("audio").asInstanceOf[HTMLAudioElement]
-  )
+  val audioElementOpt: Option[HTMLAudioElement] =
+    Option(document.querySelector("audio").asInstanceOf[HTMLAudioElement])
+
+  val audioElement: Task[HTMLAudioElement] =
+    ZIO.fromOption(audioElementOpt).mapError(_ => new Error("No audio element"))
 
   val applicationElement: Option[HTMLDivElement] =
     Option(document.getElementById("app").asInstanceOf[HTMLDivElement])
@@ -25,30 +26,30 @@ object env {
   def mountApplication(element: HTMLDivElement, svg: TypedTag[SVG]): Task[Node] =
     ZIO.effect(element.appendChild(svg.render))
 
-  val framesValues: ZStream[Any with Clock, Nothing, Unit] =
-    frames
-      .throttleShape(1, Duration.fromScala(1.second))(_ => 1)
-      .mapM(v => ZIO.effectTotal(println(v)))
+  def updateFFTSize(an: AnalyserNode, n: Int Refined GreaterEqual[W.`32`.T]): Task[Unit] =
+    ZIO.effect(an.fftSize = n)
 
-  def streams(node: Node): ZIO[Any with Clock, Nothing, Unit] =
-    clicks(node)
-      .mapM { e =>
-        ZIO.effectTotal(println(s"x:${e.screenX}, y:${e.screenY}"))
-      }
-      .merge(framesValues)
-      .run(Sink.drain)
+  def analyserNode(ac: AudioContext, ae: HTMLAudioElement): Task[AnalyserNode] =
+    for {
+      source   <- ZIO.effect(ac.createMediaElementSource(ae))
+      analyser <- ZIO.effect(ac.createAnalyser())
+      _        <- updateFFTSize(analyser, 32)
+      _        <- ZIO.effect(source.connect(analyser))
+      _        <- ZIO.effect(analyser.connect(ac.destination))
+    } yield analyser
 
-  val audiElementSrc: String =
-    audioElement.fold("No audio element")(_.src)
-
-  def routing(ac: AudioContext, element: HTMLAudioElement): Task[Unit] = {
-    val audioSource: MediaElementAudioSourceNode = ac.createMediaElementSource(element)
-    val analyzer: AnalyserNode                   = ac.createAnalyser()
+  // TODO: memory pressure can be reduced if reuse buffer
+  def read(analyser: AnalyserNode): ZIO[Any, Throwable, Uint8Array] = {
+    val buffSize: Task[Int] = ZIO.effect(analyser.frequencyBinCount)
+    // TODO: Ref?
+    def alloc(size: Int): Task[Uint8Array]     = ZIO.effect(new Uint8Array(size))
+    def update(buffer: Uint8Array): Task[Unit] = ZIO.effect(analyser.getByteFrequencyData(buffer))
 
     for {
-      _ <- ZIO.effect(audioSource.connect(analyzer))
-      _ <- ZIO.effect(analyzer.connect(ac.destination))
-    } yield ()
+      n      <- buffSize
+      buffer <- alloc(n)
+      _      <- update(buffer)
+    } yield buffer
   }
 
 }

@@ -14,13 +14,16 @@ object audio {
     if (ac.state == "suspended") ZIO.fromFuture(_ => ac.resume().toFuture)
     else ZIO.unit
 
-  def play(e: HTMLAudioElement): Task[Unit] =
-    ZIO.effect(e.play())
+  def play(ae: HTMLAudioElement): Task[Unit] =
+    ZIO.effect(ae.play())
 
-  def playAudio(ac: AudioContext, e: HTMLAudioElement): Task[Unit] =
+  def pause(ae: HTMLAudioElement): Task[Unit] =
+    ZIO.effect(ae.pause())
+
+  def playAudio(ac: AudioContext, ae: HTMLAudioElement): Task[Unit] =
     for {
       _ <- resume(ac)
-      _ <- play(e)
+      _ <- play(ae)
     } yield ()
 
 }

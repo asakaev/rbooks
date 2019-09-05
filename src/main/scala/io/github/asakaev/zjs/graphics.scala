@@ -13,7 +13,8 @@ object graphics {
       })
     }
 
-  val frames: ZStream[Any, Nothing, Double] =
+  // TODO: do not work as expected => .throttleShape(1, 500.millis)(_ => 1)
+  val requestedFrameEvents: ZStream[Any, Nothing, Double] =
     ZStream.repeatEffect(requestFrame)
 
 }
