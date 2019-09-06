@@ -1,5 +1,7 @@
 package io.github.asakaev.rbooks.rsquare
 
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.numeric.NonNegative
 import io.github.asakaev.rbooks.rsquare.env._
 import io.github.asakaev.zjs.audio._
 import org.scalajs.dom.raw.{AnalyserNode, AudioContext, Event, HTMLAudioElement, MouseEvent}
@@ -53,5 +55,7 @@ object logic {
   }
 
   final case class FFT(timestamp: Double, buff: Uint8Array)
+
+  final case class Measure(rms: Double Refined NonNegative, rmsNorm: Double)
 
 }

@@ -6,7 +6,7 @@ import eu.timepit.refined.auto._
 import eu.timepit.refined.numeric.GreaterEqual
 import org.scalajs.dom.document
 import org.scalajs.dom.raw._
-import org.scalajs.dom.svg.SVG
+import org.scalajs.dom.svg.{Polygon, SVG}
 import scalatags.JsDom.TypedTag
 import zio.{Task, ZIO}
 
@@ -14,17 +14,21 @@ import scala.scalajs.js.typedarray.Uint8Array
 
 object env {
 
-  val audioElementOpt: Option[HTMLAudioElement] =
-    Option(document.querySelector("audio").asInstanceOf[HTMLAudioElement])
-
   val audioElement: Task[HTMLAudioElement] =
-    ZIO.fromOption(audioElementOpt).mapError(_ => new Error("No audio element"))
+    ZIO
+      .fromOption(Option(document.querySelector("audio").asInstanceOf[HTMLAudioElement]))
+      .mapError(_ => new Error("HTMLAudioElement.empty"))
 
-  val applicationElement: Option[HTMLDivElement] =
-    Option(document.getElementById("app").asInstanceOf[HTMLDivElement])
+  val applicationElement: Task[HTMLDivElement] =
+    ZIO
+      .fromOption(Option(document.getElementById("app").asInstanceOf[HTMLDivElement]))
+      .mapError(_ => new Error("HTMLDivElement.empty"))
 
   def mountApplication(element: HTMLDivElement, svg: TypedTag[SVG]): Task[Node] =
     ZIO.effect(element.appendChild(svg.render))
+
+  def polygon(appNode: Node): Task[Polygon] =
+    ZIO.effect(appNode.firstChild.asInstanceOf[Polygon])
 
   def updateFFTSize(an: AnalyserNode, n: Int Refined GreaterEqual[W.`32`.T]): Task[Unit] =
     ZIO.effect(an.fftSize = n)

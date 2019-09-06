@@ -15,10 +15,11 @@ object TheReactiveSquare extends App {
 
   val application: ZIO[Console, Any, Unit] =
     for {
-      div     <- ZIO.fromOption(applicationElement)
+      div     <- applicationElement
       ae      <- audioElement
-      mounted <- mountApplication(div, squareSvg)
+      appNode <- mountApplication(div, svgQuadrilateral(baseQ))
+      poly    <- polygon(appNode)
       _       <- putStrLn(s"The Reactive Square")
-      _       <- streamApp(ae, mounted).run(Sink.drain)
+      _       <- streamApp(ae, appNode, poly).run(Sink.drain)
     } yield ()
 }
