@@ -22,8 +22,8 @@ fastOptJS
 ### Environment
 ```
 cd assets
-ln -s /your-path/target/scala-2.12/reactive-books-fastopt.js reactive-books-fastopt.js
-ln -s /your-path/target/scala-2.12/reactive-books-fastopt.js.map reactive-books-fastopt.js.map
+ln -s ../target/scala-2.12/reactive-books-fastopt.js reactive-books-fastopt.js
+ln -s ../target/scala-2.12/reactive-books-fastopt.js.map reactive-books-fastopt.js.map
 ```
 
 ### Audio
@@ -35,3 +35,15 @@ cd assets
 python -m SimpleHTTPServer 8000
 ```
 Any other static HTTP server fit.
+
+### Deploy
+```
+sbt
+clean
+fullOptJS
+
+git checkout gh-pages
+cp target/scala-2.12/reactive-books-opt.js app.js
+git commit -m "deploy"
+git push
+```
