@@ -7,27 +7,24 @@ import io.github.asakaev.rbooks.rsquare.math._
 import io.github.asakaev.rbooks.rsquare.view._
 import io.github.asakaev.zjs.dom._
 import io.github.asakaev.zjs.graphics.requestedFrameEvents
-import org.scalajs.dom.raw.{HTMLAudioElement, Node}
+import org.scalajs.dom.raw.Node
 import org.scalajs.dom.svg.Polygon
 import zio.ZIO
-import zio.console.{Console, putStrLn}
+import zio.clock.Clock
+import zio.console.Console
 import zio.stream.ZStream
 
 object wiring {
 
-  // TODO: ticks always generated even if audio stopped, maybe a performance issue
-  def streamApp(ae: HTMLAudioElement, n: Node, p: Polygon): ZStream[Console, Throwable, Unit] = {
-    val clicks    = mouseEvents(n).map(Message.Clicked)
-    val ticks     = requestedFrameEvents.map(Message.Ticked)
-    val audioEnds = audioEndedEvents(ae).map(Message.AudioEnded)
+  def streamApp(n: Node, p: Polygon): ZStream[Console with Clock, Throwable, Unit] = {
+    val clicks = mouseEvents(n).map(Message.Clicked)
+    val ticks  = requestedFrameEvents.map(Message.Ticked)
 
     // TODO: can not find .unNone for .collect { case Some(v) => v }
     clicks
       .merge(ticks)
-      .merge(audioEnds)
-      .mapAccumM[Console, Throwable, State, Option[FFT]](State.Wait())(reducer(ae))
+      .mapAccumM[Console with Clock, Throwable, State, Option[FFT]](State.Waiting())(reducer)
       .collect { case Some(m) => m }
-      .tap(m => putStrLn(s"[${m.buff}]"))
       .mapM { fft =>
         ZIO
           .fromEither(refineV[NonNegative](rms(fft.buff)))

@@ -6,6 +6,9 @@ import scala.scalajs.js.typedarray.Uint8Array
 
 object math {
 
+  // TODO: can be dynamic. scan maximum value in stream and use it
+  // TODO: maybe add ticker that will down max value when no activity
+  // TODO: read about compressors etc
   // TODO: ad-hoc calibrated
   val MaxRMS = 156.88451166383507
 
