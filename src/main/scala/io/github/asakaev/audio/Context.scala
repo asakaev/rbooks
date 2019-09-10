@@ -37,7 +37,7 @@ object Context extends Context {
     ZIO.accessM { ctx =>
       for {
         analyser <- ZIO.effect(ctx.createAnalyser())
-        _        <- ZIO.effectTotal(analyser.fftSize = fftSize)
+        _        <- ZIO.effect(analyser.fftSize = fftSize)
       } yield analyser
     }
 

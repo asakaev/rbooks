@@ -38,12 +38,9 @@ Any other static HTTP server fit.
 
 ### Deploy
 ```
-sbt
-clean
-fullOptJS
-
+sbt clean fullOptJS
 git checkout gh-pages
-cp target/scala-2.12/reactive-books-opt.js app.js
+cp target/scala-2.13/reactive-books-opt.js app.js
 git add app.js
 git commit -m "deploy"
 git push

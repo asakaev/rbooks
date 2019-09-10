@@ -1,7 +1,7 @@
 enablePlugins(ScalaJSPlugin)
 
 name := "Reactive Books"
-scalaVersion := "2.12.9"
+scalaVersion := "2.13.1"
 scalaJSUseMainModuleInitializer := true
 
 libraryDependencies ++= List(

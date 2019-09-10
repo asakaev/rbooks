@@ -6,18 +6,21 @@ import io.github.asakaev.rbooks.rsquare.logic._
 import io.github.asakaev.rbooks.rsquare.math._
 import io.github.asakaev.rbooks.rsquare.view._
 import io.github.asakaev.zjs.dom._
-import io.github.asakaev.zjs.graphics.requestedFrameEvents
 import org.scalajs.dom.raw.Node
 import org.scalajs.dom.svg.Polygon
 import zio.ZIO
 import zio.console.Console
-import zio.stream.ZStream
+import zio.stream._
 
 object wiring {
 
-  def streamApp(n: Node, p: Polygon): ZStream[Console, Throwable, Unit] = {
+  def streamApp(
+      n: Node,
+      p: Polygon,
+      rafs: Stream[Nothing, Double]
+  ): ZStream[Console, Throwable, Unit] = {
     val clicks = mouseEvents(n).map(Message.Clicked)
-    val ticks  = requestedFrameEvents.map(Message.Ticked)
+    val ticks  = rafs.map(Message.Ticked)
 
     // TODO: can not find .unNone for .collect { case Some(v) => v }
     clicks

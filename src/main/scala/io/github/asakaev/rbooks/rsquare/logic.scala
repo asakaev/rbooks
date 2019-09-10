@@ -15,21 +15,20 @@ import org.scalajs.dom.raw.{
   AudioContext,
   MouseEvent
 }
-import zio.clock.Clock
 import zio.console._
-import zio.{Task, UIO, ZIO}
+import zio.{Ref, Task, UIO, ZIO}
 
 import scala.scalajs.js.typedarray.Uint8Array
 
 object logic {
 
-  val conf = Config("audio.mp3")
-
-  case class AudioState(analyser: AnalyserNode, decoded: AudioBuffer, buff: Uint8Array)
-
-  case class Playback(offset: Double, startedAt: Double, duration: Double) {
-    def updated(t: Double): Playback = Playback((offset + t - startedAt) % duration, t, duration)
+  trait Message
+  object Message {
+    final case class Clicked(ev: MouseEvent)   extends Message
+    final case class Ticked(timestamp: Double) extends Message
   }
+
+  case class AudioState(analyser: AnalyserNode, decoded: AudioBuffer, buff: Ref[Uint8Array])
 
   trait State
   object State {
@@ -42,6 +41,53 @@ object logic {
     ) extends State
     final case class Paused(ctx: AudioContext, playback: Playback, audioState: AudioState)
         extends State
+  }
+
+  case class Playback(offset: Double, startedAt: Double, duration: Double) {
+    def updated(t: Double): Playback = Playback((offset + t - startedAt) % duration, t, duration)
+  }
+
+  final case class FFT(timestamp: Double, buff: Uint8Array)
+  final case class Measure(rms: Double Refined NonNegative, rmsNorm: Double)
+
+  val conf = Config("audio.mp3")
+
+  // TODO: ctx suspend resume on play pause
+
+  val reducer: (State, Message) => ZIO[Console, Throwable, (State, Option[FFT])] = {
+    case (State.Idle, Message.Clicked(_)) =>
+      for {
+        ctx        <- audioContext
+        audioState <- createAudioState(ctx)
+        s          <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
+        _          <- start(0).provide(s)
+        t          <- currentTime.provide(ctx)
+        pb = Playback(t, t, audioState.decoded.duration)
+        _ <- putStrLn(s"Start: $pb")
+      } yield State.Playing(ctx, s, audioState, pb) -> None
+    case (State.Playing(ctx, s, audioState, playback), Message.Clicked(_)) =>
+      for {
+        _ <- stop.provide(s)
+        t <- currentTime.provide(ctx)
+        pb = playback.updated(t)
+        _ <- putStrLn(s"Paused: $pb")
+      } yield State.Paused(ctx, pb, audioState) -> None
+    case (State.Paused(ctx, playback, audioState), Message.Clicked(_)) =>
+      for {
+        _ <- putStrLn("Resume")
+        s <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
+        t <- currentTime.provide(ctx)
+        pb = playback.updated(t)
+        _ <- start(pb.offset).provide(s)
+      } yield State.Playing(ctx, s, audioState, playback) -> None
+    case (s @ State.Playing(_, _, audioState, _), Message.Ticked(ts)) =>
+      for {
+        _    <- updateFrequency(audioState.buff).provide(audioState.analyser)
+        buff <- audioState.buff.get
+      } yield s -> Some(FFT(ts, buff))
+    case (s, _) =>
+      // TODO: fix useless ticks
+      ZIO.succeed(s -> None)
   }
 
   def createBuffer(n: Int): UIO[Uint8Array] =
@@ -70,8 +116,9 @@ object logic {
       decoded     <- decodeAudioData(audioBuffer).provide(ctx)
       _           <- putStrLn(s"Decoded duration: ${decoded.duration}")
       buff        <- createBuffer(analyser.frequencyBinCount)
+      rb          <- Ref.make(buff)
       _           <- putStrLn(s"FFT buffer created: [${buff.toString}]")
-    } yield AudioState(analyser, decoded, buff)
+    } yield AudioState(analyser, decoded, rb)
 
   def createConnectedBufferSource(
       ctx: AudioContext,
@@ -83,50 +130,5 @@ object logic {
       s <- createSource(decoded).provide(ctx)
       _ <- connectSource(ctx, analyser, s)
     } yield s
-
-  val reducer: (State, Message) => ZIO[Console, Throwable, (State, Option[FFT])] = {
-    case (State.Idle, Message.Clicked(_)) =>
-      for {
-        ctx        <- audioContext
-        audioState <- createAudioState(ctx)
-        s          <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
-        _          <- start(0).provide(s)
-        t          <- currentTime.provide(ctx)
-        playback = Playback(t, t, audioState.decoded.duration)
-        _ <- putStrLn(s"Start: $playback")
-      } yield State.Playing(ctx, s, audioState, playback) -> None
-    case (State.Playing(ctx, s, audioState, playback), Message.Clicked(_)) =>
-      for {
-        _ <- stop.provide(s)
-        t <- currentTime.provide(ctx)
-        pb = playback.updated(t)
-        _ <- putStrLn(s"Paused: $pb")
-      } yield State.Paused(ctx, pb, audioState) -> None
-    case (State.Paused(ctx, playback, audioState), Message.Clicked(_)) =>
-      for {
-        _ <- putStrLn("Resume")
-        s <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
-        t <- currentTime.provide(ctx)
-        pb = playback.updated(t)
-        _ <- start(pb.offset).provide(s)
-      } yield State.Playing(ctx, s, audioState, playback) -> None
-    case (s @ State.Playing(_, _, audioState, _), Message.Ticked(ts)) =>
-      for {
-        _ <- writeAnalyserData(audioState.buff).provide(audioState.analyser)
-      } yield s -> Some(FFT(ts, audioState.buff))
-    case (s, _) =>
-      // TODO: fix useless ticks
-      ZIO.succeed(s -> None)
-  }
-
-  trait Message
-  object Message {
-    final case class Clicked(ev: MouseEvent)   extends Message
-    final case class Ticked(timestamp: Double) extends Message
-  }
-
-  final case class FFT(timestamp: Double, buff: Uint8Array)
-
-  final case class Measure(rms: Double Refined NonNegative, rmsNorm: Double)
 
 }

@@ -9,6 +9,8 @@ import scala.scalajs.js.typedarray.ArrayBuffer
 
 object net {
 
+  // TODO: Chunk?
+
   // TODO: check what is ErrorEvent
   // TODO: handle exceptions, 404 etc
   def request(uri: String Refined Uri): ZIO[Any, ErrorEvent, ArrayBuffer] =

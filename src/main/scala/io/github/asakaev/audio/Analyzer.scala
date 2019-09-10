@@ -1,17 +1,17 @@
 package io.github.asakaev.audio
 
 import org.scalajs.dom.raw.AnalyserNode
-import zio.ZIO
+import zio.{Ref, ZIO}
 
 import scala.scalajs.js.typedarray.Uint8Array
 
-trait Analyzer {
-  def writeAnalyserData(buffer: Uint8Array): ZIO[AnalyserNode, Throwable, Unit]
-}
+object Analyzer {
 
-object Analyzer extends Analyzer {
-  final def writeAnalyserData(buffer: Uint8Array): ZIO[AnalyserNode, Throwable, Unit] =
+  final def updateFrequency(buffer: Ref[Uint8Array]): ZIO[AnalyserNode, Throwable, Unit] =
     ZIO.accessM { analyser =>
-      ZIO.effect(analyser.getByteFrequencyData(buffer))
+      buffer.modify { buff =>
+        analyser.getByteFrequencyData(buff)
+        () -> buff
+      }
     }
 }
