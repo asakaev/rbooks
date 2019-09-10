@@ -10,20 +10,19 @@ import io.github.asakaev.zjs.graphics.requestedFrameEvents
 import org.scalajs.dom.raw.Node
 import org.scalajs.dom.svg.Polygon
 import zio.ZIO
-import zio.clock.Clock
 import zio.console.Console
 import zio.stream.ZStream
 
 object wiring {
 
-  def streamApp(n: Node, p: Polygon): ZStream[Console with Clock, Throwable, Unit] = {
+  def streamApp(n: Node, p: Polygon): ZStream[Console, Throwable, Unit] = {
     val clicks = mouseEvents(n).map(Message.Clicked)
     val ticks  = requestedFrameEvents.map(Message.Ticked)
 
     // TODO: can not find .unNone for .collect { case Some(v) => v }
     clicks
       .merge(ticks)
-      .mapAccumM[Console with Clock, Throwable, State, Option[FFT]](State.Waiting())(reducer)
+      .mapAccumM[Console, Throwable, State, Option[FFT]](State.Idle)(reducer)
       .collect { case Some(m) => m }
       .mapM { fft =>
         ZIO
