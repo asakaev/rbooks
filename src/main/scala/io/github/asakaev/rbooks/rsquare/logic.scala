@@ -1,11 +1,14 @@
 package io.github.asakaev.rbooks.rsquare
 
+import java.lang.Math.max
+
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.auto._
 import eu.timepit.refined.numeric.NonNegative
 import io.github.asakaev.audio.Analyzer._
 import io.github.asakaev.audio.BufferSource._
 import io.github.asakaev.audio.Context._
+import io.github.asakaev.rbooks.rsquare.math._
 import io.github.asakaev.zjs.audio._
 import io.github.asakaev.zjs.net.request
 import org.scalajs.dom.raw.{
@@ -28,7 +31,12 @@ object logic {
     final case class Ticked(timestamp: Double) extends Message
   }
 
-  case class AudioState(analyser: AnalyserNode, decoded: AudioBuffer, buff: Ref[Uint8Array])
+  case class AudioState(
+      analyser: AnalyserNode,
+      decoded: AudioBuffer,
+      freqBuff: Ref[Uint8Array],
+      fftBuff: Ref[Uint8Array]
+  )
 
   trait State
   object State {
@@ -39,26 +47,33 @@ object logic {
         audioState: AudioState,
         playback: Playback
     ) extends State
-    final case class Paused(ctx: AudioContext, playback: Playback, audioState: AudioState)
-        extends State
+    final case class Paused(
+        ctx: AudioContext,
+        playback: Playback,
+        audioState: AudioState
+    ) extends State
   }
 
   case class Playback(offset: Double, startedAt: Double, duration: Double) {
     def updated(t: Double): Playback = Playback((offset + t - startedAt) % duration, t, duration)
   }
 
-  final case class FFT(timestamp: Double, buff: Uint8Array)
-  final case class Measure(rms: Double Refined NonNegative, rmsNorm: Double)
+  final case class RawData(timestamp: Double, freqBuff: Uint8Array, fftBuff: Uint8Array)
+  final case class Measure1(rms: Double Refined NonNegative)
+
+  // 0.0 to 1.0
+  final case class Measure2(rmsNorm: Double)
 
   val conf = Config("audio.mp3")
 
-  // TODO: ctx suspend resume on play pause
-
-  val reducer: (State, Message) => ZIO[Console, Throwable, (State, Option[FFT])] = {
+  val reducer: (State, Message) => ZIO[Console, Throwable, (State, Option[RawData])] = {
     case (State.Idle, Message.Clicked(_)) =>
       for {
         ctx        <- audioContext
+        _          <- putStrLn(s"Ctx: ${ctx.state}, SR: ${ctx.sampleRate} T: ${ctx.currentTime}")
         audioState <- createAudioState(ctx)
+        _          <- resume.provide(ctx)
+        _          <- putStrLn("Idle resumed")
         s          <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
         _          <- start(0).provide(s)
         t          <- currentTime.provide(ctx)
@@ -71,20 +86,25 @@ object logic {
         t <- currentTime.provide(ctx)
         pb = playback.updated(t)
         _ <- putStrLn(s"Paused: $pb")
+        _ <- suspend.provide(ctx)
+        _ <- putStrLn("Playing suspended")
       } yield State.Paused(ctx, pb, audioState) -> None
     case (State.Paused(ctx, playback, audioState), Message.Clicked(_)) =>
       for {
-        _ <- putStrLn("Resume")
+        _ <- resume.provide(ctx)
+        _ <- putStrLn("Paused resumed")
         s <- createConnectedBufferSource(ctx, audioState.decoded, audioState.analyser)
         t <- currentTime.provide(ctx)
         pb = playback.updated(t)
         _ <- start(pb.offset).provide(s)
       } yield State.Playing(ctx, s, audioState, playback) -> None
-    case (s @ State.Playing(_, _, audioState, _), Message.Ticked(ts)) =>
+    case (s @ State.Playing(_, _, as, _), Message.Ticked(ts)) =>
       for {
-        _    <- updateFrequency(audioState.buff).provide(audioState.analyser)
-        buff <- audioState.buff.get
-      } yield s -> Some(FFT(ts, buff))
+        _        <- getByteFrequencyData(as.freqBuff).provide(as.analyser)
+        freqBuff <- as.freqBuff.get
+        _        <- getByteTimeDomainData(as.fftBuff).provide(as.analyser)
+        fftBuff  <- as.fftBuff.get
+      } yield s -> Some(RawData(ts, freqBuff, fftBuff))
     case (s, _) =>
       // TODO: fix useless ticks
       ZIO.succeed(s -> None)
@@ -106,19 +126,21 @@ object logic {
 
   def createAudioState(ctx: AudioContext): ZIO[Console, Throwable, AudioState] =
     for {
-      _ <- putStrLn(s"Ctx: ${ctx.state}, SR: ${ctx.sampleRate} T: ${ctx.currentTime}")
       _ <- putStrLn("Create analyser")
-      // TODO: why analyser stops working if create if after request?
-      analyser    <- createAnalyser(32).provide(ctx)
-      _           <- putStrLn(s"Ctx: ${ctx.state}, SR: ${ctx.sampleRate} T: ${ctx.currentTime}")
-      audioBuffer <- request(conf.audio).mapError(e => new Error(e.message))
-      _           <- putStrLn(s"Loaded ${audioBuffer.byteLength} bytes of ${conf.audio}")
-      decoded     <- decodeAudioData(audioBuffer).provide(ctx)
-      _           <- putStrLn(s"Decoded duration: ${decoded.duration}")
-      buff        <- createBuffer(analyser.frequencyBinCount)
-      rb          <- Ref.make(buff)
-      _           <- putStrLn(s"FFT buffer created: [${buff.toString}]")
-    } yield AudioState(analyser, decoded, rb)
+      // TODO: why analyser stops working if created after decoding?
+      analyser     <- createAnalyser(32).provide(ctx)
+      _            <- putStrLn(s"Ctx: ${ctx.state}, SR: ${ctx.sampleRate} T: ${ctx.currentTime}")
+      audioBuffer  <- request(conf.audio).mapError(e => new Error(e.message))
+      _            <- putStrLn(s"Loaded ${audioBuffer.byteLength} bytes of ${conf.audio}")
+      decoded      <- decodeAudioData(audioBuffer).provide(ctx)
+      _            <- putStrLn(s"Decoded duration: ${decoded.duration}")
+      freqBuffSize <- frequencyBinCount.provide(analyser)
+      freqRef      <- Ref.make(new Uint8Array(freqBuffSize))
+      _            <- putStrLn(s"Freq buffer of size $freqBuffSize created")
+      fftBuffSize  <- fftSize.provide(analyser)
+      fftRef       <- Ref.make(new Uint8Array(fftBuffSize))
+      _            <- putStrLn(s"FFT buffer of size $fftBuffSize created")
+    } yield AudioState(analyser, decoded, freqRef, fftRef)
 
   def createConnectedBufferSource(
       ctx: AudioContext,
@@ -130,5 +152,14 @@ object logic {
       s <- createSource(decoded).provide(ctx)
       _ <- connectSource(ctx, analyser, s)
     } yield s
+
+  final case class RunningState(rmsMaxValue: Option[Double])
+
+  val rmsStatefulReducer: (RunningState, Measure1) => (RunningState, Option[Measure2]) = {
+    case (RunningState(mx0), Measure1(rms)) =>
+      // TODO: fix NaN when rms 0.0 on start
+      val mx1 = max(mx0.getOrElse(rms.value), rms)
+      RunningState(Some(mx1)) -> Some(Measure2(normalize(rms.value, mx1)))
+  }
 
 }

@@ -6,12 +6,14 @@ import zio.stream.Stream
 
 object dom {
 
+  // TODO: how to unsubscribe when stream ended by .take(1)
   // TODO: it's possible to have ZStream[HTMLButtonElement, Nothing, MouseEvent]
-  def mouseEvents(target: EventTarget): Stream[Nothing, MouseEvent] =
+  def eventStream[A](target: EventTarget, event: String): Stream[Nothing, A] =
     Stream.effectAsync { cb =>
-      target.addEventListener("click", { ev: MouseEvent =>
-        cb(ZIO.succeed(ev))
-      })
+      target.addEventListener(event, (ev: A) => cb(ZIO.succeed(ev)))
     }
+
+  def mouseEvents(target: EventTarget): Stream[Nothing, MouseEvent] =
+    eventStream(target, "click")
 
 }

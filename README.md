@@ -22,8 +22,8 @@ fastOptJS
 ### Environment
 ```
 cd assets
-ln -s ../target/scala-2.12/reactive-books-fastopt.js reactive-books-fastopt.js
-ln -s ../target/scala-2.12/reactive-books-fastopt.js.map reactive-books-fastopt.js.map
+ln -s ../target/scala-2.13/reactive-books-fastopt.js reactive-books-fastopt.js
+ln -s ../target/scala-2.13/reactive-books-fastopt.js.map reactive-books-fastopt.js.map
 ```
 
 ### Audio

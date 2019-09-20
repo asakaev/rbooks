@@ -26,6 +26,9 @@ trait Context {
 
   def decodeAudioData(buffer: ArrayBuffer): ZIO[AudioContext, Throwable, AudioBuffer]
 
+  val suspend: ZIO[AudioContext, Throwable, Unit]
+  val resume: ZIO[AudioContext, Throwable, Unit]
+
 }
 
 object Context extends Context {
@@ -59,6 +62,16 @@ object Context extends Context {
           () => cb(ZIO.fail(new Error("decodeAudioData.failed")))
         )
       }
+    }
+
+  final val resume: ZIO[AudioContext, Throwable, Unit] =
+    ZIO.accessM { ctx =>
+      ZIO.fromFuture(_ => ctx.resume().toFuture)
+    }
+
+  final val suspend: ZIO[AudioContext, Throwable, Unit] =
+    ZIO.accessM { ctx =>
+      ZIO.fromFuture(_ => ctx.suspend().toFuture)
     }
 
 }
