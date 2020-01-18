@@ -11,7 +11,8 @@ import zio.{Task, ZIO}
 
 object view {
 
-  val baseQ = Quadrilateral(Point(0, 0), Point(100, 0), Point(100, 100), Point(0, 100))
+  val baseQ: Quadrilateral =
+    Quadrilateral(Point(0, 0), Point(100, 0), Point(100, 100), Point(0, 100))
 
   def viewQuadrilateral(rmsNorm: Double): Quadrilateral =
     baseQ.scale(rmsNorm)

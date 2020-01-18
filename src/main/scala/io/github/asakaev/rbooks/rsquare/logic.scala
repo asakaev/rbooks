@@ -10,6 +10,7 @@ import io.github.asakaev.audio.BufferSource._
 import io.github.asakaev.audio.Context._
 import io.github.asakaev.rbooks.rsquare.math._
 import io.github.asakaev.zjs.audio._
+import io.github.asakaev.zjs.dom.Screen
 import io.github.asakaev.zjs.net.request
 import org.scalajs.dom.raw.{
   AnalyserNode,
@@ -27,8 +28,9 @@ object logic {
 
   trait Message
   object Message {
-    final case class Clicked(ev: MouseEvent)   extends Message
-    final case class Ticked(timestamp: Double) extends Message
+    final case class Clicked(ev: MouseEvent)                    extends Message
+    final case class Ticked(timestamp: Double)                  extends Message
+    final case class Resized(timestamp: Double, screen: Screen) extends Message
   }
 
   case class AudioState(
@@ -64,7 +66,7 @@ object logic {
   // 0.0 to 1.0
   final case class Measure2(rmsNorm: Double)
 
-  val conf = Config("audio.mp3")
+  val conf: Config = Config("audio.mp3")
 
   val reducer: (State, Message) => ZIO[Console, Throwable, (State, Option[RawData])] = {
     case (State.Idle, Message.Clicked(_)) =>
